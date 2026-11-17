@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>포모도로 타이머</title>
+<style>
+  :root { --bg:#fff5f3; --card:#fff; --text:#2b2220; --muted:#8a7a76; --accent:#e5533d; --track:#f3dedb; }
+  body.short { --bg:#effaf3; --accent:#2f9e5b; --track:#d6eede; }
+  body.long  { --bg:#eef4fd; --accent:#3b79d6; --track:#d8e4f6; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#241917; --card:#2f2220; --text:#f5e9e6; --muted:#a8958f; --track:#4a3430; }
+    body.short { --bg:#14231a; --track:#27402f; }
+    body.long  { --bg:#141c2b; --track:#27364f; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; display:grid; place-items:center; background:var(--bg); color:var(--text);
+         font-family:system-ui,"Malgun Gothic",sans-serif; transition:background .4s; padding:16px; }
+  .card { background:var(--card); border-radius:24px; padding:28px 24px; width:100%; max-width:380px; text-align:center;
+          box-shadow:0 8px 30px rgba(0,0,0,.08); }
+  .tabs { display:flex; gap:6px; background:var(--track); padding:4px; border-radius:999px; margin-bottom:24px; }
+  .tabs button { flex:1; border:0; background:none; color:var(--muted); padding:8px 0; border-radius:999px; font-size:14px; cursor:pointer; }
+  .tabs button.on { background:var(--card); color:var(--accent); font-weight:700; }
+  .ring { position:relative; width:240px; height:240px; margin:0 auto 24px; }
+  svg { transform:rotate(-90deg); }
+  .time { position:absolute; inset:0; display:grid; place-items:center; font-size:54px; font-weight:700; font-variant-numeric:tabular-nums; }
+  .controls { display:flex; gap:10px; justify-content:center; }
+  .controls button { border:0; border-radius:999px; padding:12px 28px; font-size:16px; cursor:pointer; }
+  #start { background:var(--accent); color:#fff; font-weight:700; min-width:120px; }
+  #reset { background:var(--track); color:var(--text); }
+  .count { margin-top:20px; color:var(--muted); font-size:14px; }
+  .dog { margin-top:20px; height:200px; border-radius:16px; background:var(--track); overflow:hidden; display:grid; place-items:center; color:var(--muted); font-size:14px; }
+  .wallet { margin-top:16px; padding:10px 12px; border-radius:12px; background:var(--track); font-size:14px; }
+  .wallet.bump { animation:pop .3s ease-out; }
+  .pet { text-align:center; padding-top:12px; }
+  .emo { position:relative; display:inline-block; line-height:1.1; animation:pop .5s ease-out; }
+  .acc { position:absolute; left:50%; transform:translateX(-50%); line-height:1; pointer-events:none; white-space:nowrap; }
+  .acc-hat { top:-.25em; font-size:.55em; }
+  .acc-face { top:.42em; font-size:.5em; }
+  .acc-neck { bottom:-.1em; font-size:.45em; }
+  .shopbtn { margin-top:10px; width:100%; border:0; border-radius:12px; padding:10px; font-size:15px; cursor:pointer; background:var(--accent); color:#fff; font-weight:700; }
+  dialog#shop { border:0; border-radius:20px; padding:20px; width:min(92vw, 420px); max-height:85vh; background:var(--card); color:var(--text); box-shadow:0 12px 40px rgba(0,0,0,.25); }
+  dialog#shop::backdrop { background:rgba(0,0,0,.45); }
+  .shop-head { display:flex; justify-content:space-between; align-items:center; font-size:17px; margin-bottom:12px; }
+  .shop-tabs { display:flex; gap:6px; background:var(--track); padding:4px; border-radius:999px; margin-bottom:12px; }
+  .shop-tabs button { flex:1; border:0; background:none; color:var(--muted); padding:8px 0; border-radius:999px; font-size:14px; cursor:pointer; }
+  .shop-tabs button.on { background:var(--card); color:var(--accent); font-weight:700; }
+  .shop-list { display:grid; grid-template-columns:repeat(2, 1fr); gap:10px; overflow-y:auto; max-height:46vh; padding:2px; }
+  .item { border:2px solid var(--track); border-radius:14px; padding:10px; text-align:center; }
+  .item.worn { border-color:var(--accent); }
+  .item .pv { height:64px; border-radius:10px; display:grid; place-items:center; font-size:36px; background:var(--track); margin-bottom:6px; }
+  .item .nm2 { font-size:14px; font-weight:700; }
+  .item .sl { font-size:12px; color:var(--muted); margin-bottom:6px; }
+  .item button { width:100%; border:0; border-radius:999px; padding:7px 0; font-size:13px; cursor:pointer; background:var(--accent); color:#fff; font-weight:700; }
+  .item button:disabled { background:var(--track); color:var(--muted); cursor:not-allowed; }
+  #shopClose { margin-top:14px; width:100%; border:0; border-radius:12px; padding:10px; font-size:15px; cursor:pointer; background:var(--track); color:var(--text); }
+  .nm { font-weight:700; color:var(--text); font-size:16px; margin-top:4px; }
+  .nx { font-size:13px; color:var(--muted); margin-top:2px; }
+  @keyframes pop { 0% { transform:scale(.4); } 70% { transform:scale(1.15); } 100% { transform:scale(1); } }
+  button:focus-visible { outline:3px solid var(--accent); outline-offset:2px; }
+</style>
+</head>
+<body>
+<main class="card">
+  <div class="tabs" role="tablist">
+    <button data-mode="work" class="on">집중 25분</button>
+    <button data-mode="short">휴식 5분</button>
+    <button data-mode="long">긴 휴식 15분</button>
+  </div>
+  <div class="ring">
+    <svg width="240" height="240" viewBox="0 0 240 240">
+      <circle cx="120" cy="120" r="108" fill="none" stroke="var(--track)" stroke-width="12"/>
+      <circle id="prog" cx="120" cy="120" r="108" fill="none" stroke="var(--accent)" stroke-width="12" stroke-linecap="round"/>
+    </svg>
+    <div class="time" id="time">25:00</div>
+  </div>
+  <div class="controls">
+    <button id="start">시작</button>
+    <button id="reset">리셋</button>
+  </div>
+  <div class="dog" id="dog">🐶 시작하면 3초마다 강아지 사진이 바뀌어요</div>
+  <div class="wallet">🪙 <b id="coins">0</b> 코인 · 오늘 집중 <b id="focus">0분 0초</b></div>
+  <button class="shopbtn" id="openShop">🛍️ 강아지 상점</button>
+  <div class="count">완료한 포모도로: <b id="done">0</b>개</div>
+</main>
+<dialog id="shop" aria-label="강아지 상점">
+  <div class="shop-head"><b>🛍️ 강아지 상점</b><span>🪙 <b id="shopCoins">0</b></span></div>
+  <div class="shop-tabs">
+    <button data-tab="wear" class="on">옷·소품</button>
+    <button data-tab="bg">배경</button>
+  </div>
+  <div class="shop-list" id="shopList"></div>
+  <button id="shopClose">닫기</button>
+</dialog>
+<script>
+const MODES = { work:25*60, short:5*60, long:15*60 };
+const C = 2*Math.PI*108;
+const $ = id => document.getElementById(id);
+let mode = 'work', total = MODES.work, left = total, timer = null, endAt = 0, done = 0;
+try { done = +localStorage.getItem('pomo-done-' + new Date().toDateString()) || 0; } catch(e) {}
+$('prog').style.strokeDasharray = C;
+
+function fmt(s){ return String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0'); }
+function render(){
+  $('time').textContent = fmt(left);
+  $('prog').style.strokeDashoffset = C * (1 - left/total);
+  $('start').textContent = timer ? '일시정지' : (left < total ? '계속' : '시작');
+  $('done').textContent = done;
+  document.title = (timer ? fmt(left) + ' · ' : '') + '포모도로 타이머';
+}
+function beep(){
+  try {
+    const a = new (window.AudioContext||window.webkitAudioContext)();
+    [0,.3,.6].forEach(t => {
+      const o = a.createOscillator(), g = a.createGain();
+      o.frequency.value = 880; o.connect(g); g.connect(a.destination);
+      g.gain.setValueAtTime(.2, a.currentTime+t); g.gain.exponentialRampToValueAtTime(.001, a.currentTime+t+.25);
+      o.start(a.currentTime+t); o.stop(a.currentTime+t+.25);
+    });
+  } catch(e) {}
+}
+const STAGES = [
+  ['🥚','알'],['🐣','부화 중인 알'],['🐶','새끼 강아지'],['🐶🍼','젖먹이 강아지'],['🐕','강아지'],
+  ['🦴','뼈다귀 발견!'],['🎾','공놀이 강아지'],['🐕‍🦺','옷 입은 강아지'],['🐶🧣','목도리 강아지'],['🐶🧢','모자 쓴 강아지'],
+  ['😎','선글라스 강아지'],['👟','운동화 강아지'],['🎒','등교하는 강아지'],['✏️','공부하는 강아지'],['📚','우등생 강아지'],
+  ['🎓','졸업한 강아지'],['👔','신입사원 강아지'],['💼','직장인 강아지'],['☕','커피 수혈 강아지'],['💻','개발자 강아지'],
+  ['🐶🍅','포모도로 마스터'],['🍳','요리사 강아지'],['🎨','화가 강아지'],['🎸','기타리스트 강아지'],['🎤','가수 강아지'],
+  ['🎬','영화배우 강아지'],['🏆','월드스타 강아지'],['⚽','축구선수 강아지'],['🏀','농구선수 강아지'],['🏊','수영선수 강아지'],
+  ['🥇','금메달리스트'],['🚓','경찰견'],['🚒','소방견'],['🚑','구조견'],['🕵️','탐정견'],
+  ['🦸','슈퍼히어로 견'],['🥷','닌자 견'],['🧙','마법사 견'],['🧚','요정 견'],['🧞','지니 견'],
+  ['🤖','로봇 견'],['👽','외계 견'],['🚀','우주비행사 견'],['🌙','달 탐사 견'],['🪐','토성 여행 견'],
+  ['☄️','혜성 라이더'],['🌟','별이 된 견'],['☀️','태양 견'],['🌈','무지개 견'],['❄️','얼음 견'],
+  ['🔥','불꽃 견'],['⚡','번개 견'],['🌊','파도 견'],['🌪️','태풍 견'],['🌋','화산 견'],
+  ['🌳','숲의 수호견'],['🍀','행운의 견'],['🦄','유니콘 견'],['🐲','아기 용'],['🐉','용'],
+  ['🦅','독수리 날개 견'],['🦁','사자 갈기 견'],['🐯','호랑이 줄무늬 견'],['🐺','늑대 견'],['🦊','구미호 견'],
+  ['🐻','곰의 힘 견'],['🦖','공룡 견'],['🦕','목긴 공룡 견'],['🐙','문어발 견'],['🦈','상어 견'],
+  ['🐋','고래 견'],['🔱','바다의 왕'],['⚔️','기사 견'],['🛡️','방패 견'],['🏰','성주 견'],
+  ['🤴','왕자 견'],['👑','왕 견'],['🧿','신비의 견'],['🔮','예언가 견'],['⚜️','황금 견'],
+  ['💎','다이아몬드 견'],['🪽','천사 견'],['😇','대천사 견'],['😈','대마왕 견'],['👹','도깨비 견'],
+  ['🌀','차원 이동 견'],['⏳','시간 지배 견'],['♾️','무한의 견'],['🌌','은하 견'],['🕳️','블랙홀 견'],
+  ['💥','빅뱅 견'],['🪄','창조의 견'],['🌍','지구 수호 견'],['☯️','음양 견'],['🧘','득도한 견'],
+  ['🏔️','신선 견'],['✨','전설 속 견'],['🐾','발자국의 신'],['🌠','우주의 지배자'],['👑🐕','우주 견왕']
+].map(([emoji, name]) => ({ emoji, name }));
+const EVO_SEC = 1;
+let dogTimer = null, evoSec = 0, lastStage = -1;
+function showStage(){
+  const last = STAGES.length - 1;
+  const s = Math.min(last, Math.floor(evoSec / EVO_SEC));
+  const box = $('dog');
+  if (s !== lastStage) {
+    lastStage = s;
+    box.innerHTML = '<div class="pet"><div class="emo" style="font-size:' + (64 + Math.min(s, 40)) + 'px">' + STAGES[s].emoji + '</div><div class="nm"></div><div class="nx"></div></div>';
+  }
+  applyLook();
+  box.querySelector('.nm').textContent = 'Lv.' + (s+1) + ' ' + STAGES[s].name;
+  box.querySelector('.nx').textContent = s < last ? '진화 ' + (s+1) + ' / ' + STAGES.length : '최종 진화 완료! 🎉 (' + STAGES.length + ' / ' + STAGES.length + ')';
+}
+// 코인: 집중 모드로 타이머가 돌아가는 동안 6초에 1코인 (= 1분에 10코인)
+const COIN_EVERY = 6;
+const todayKey = () => 'pomo-focus-' + new Date().toDateString();
+let coins = 0, focusSec = 0;
+try { coins = +localStorage.getItem('pomo-coins') || 0; focusSec = +localStorage.getItem(todayKey()) || 0; } catch(e) {}
+function showWallet(bump){
+  $('coins').textContent = coins.toLocaleString();
+  $('focus').textContent = Math.floor(focusSec/60) + '분 ' + (focusSec%60) + '초';
+  if (bump) { const w = document.querySelector('.wallet'); w.classList.remove('bump'); void w.offsetWidth; w.classList.add('bump'); }
+  if ($('shop').open) {
+    $('shopCoins').textContent = coins.toLocaleString();
+    document.querySelectorAll('#shopList button[data-price]').forEach(b => { b.disabled = coins < +b.dataset.price; });
+  }
+}
+
+// ===== 상점 =====
+const BG = (a, b) => 'linear-gradient(135deg,' + a + ',' + b + ')';
+const ITEMS = [
+  { id:'cap',     slot:'hat',  emoji:'🧢', name:'야구 모자', price:30 },
+  { id:'straw',   slot:'hat',  emoji:'👒', name:'밀짚모자', price:60 },
+  { id:'tophat',  slot:'hat',  emoji:'🎩', name:'실크햇', price:80 },
+  { id:'grad',    slot:'hat',  emoji:'🎓', name:'학사모', price:120 },
+  { id:'crown',   slot:'hat',  emoji:'👑', name:'왕관', price:200 },
+  { id:'glasses', slot:'face', emoji:'👓', name:'안경', price:40 },
+  { id:'shades',  slot:'face', emoji:'🕶️', name:'선글라스', price:50 },
+  { id:'ribbon',  slot:'neck', emoji:'🎀', name:'리본', price:30 },
+  { id:'scarf',   slot:'neck', emoji:'🧣', name:'목도리', price:40 },
+  { id:'medal',   slot:'neck', emoji:'🏅', name:'금메달', price:150 },
+  { id:'bg0',     slot:'bg',   emoji:'🐾', name:'기본 배경', price:0, css:'' },
+  { id:'bgsunset',slot:'bg',   emoji:'🌅', name:'노을', price:50,  css:BG('#ffb88c','#de6262') },
+  { id:'bgsea',   slot:'bg',   emoji:'🏖️', name:'바다', price:80,  css:BG('#89f7fe','#66a6ff') },
+  { id:'bgforest',slot:'bg',   emoji:'🌳', name:'숲', price:100, css:BG('#a8e063','#56ab2f') },
+  { id:'bgnight', slot:'bg',   emoji:'🌌', name:'밤하늘', price:120, css:BG('#232526','#414345') },
+  { id:'bgsakura',slot:'bg',   emoji:'🌸', name:'벚꽃', price:150, css:BG('#ffdde1','#ee9ca7') },
+  { id:'bggold',  slot:'bg',   emoji:'✨', name:'황금빛', price:300, css:BG('#f9d423','#ff4e50') }
+];
+const SLOT_LABEL = { hat:'모자', face:'얼굴', neck:'목', bg:'배경' };
+let shop = { owned:['bg0'], worn:{ hat:null, face:null, neck:null, bg:'bg0' } };
+try {
+  const s = JSON.parse(localStorage.getItem('pomo-shop'));
+  if (s && Array.isArray(s.owned) && s.worn) shop = { owned:['bg0', ...s.owned.filter(x => x !== 'bg0')], worn:{ hat:null, face:null, neck:null, bg:'bg0', ...s.worn } };
+} catch(e) {}
+let shopTab = 'wear';
+const itemById = id => ITEMS.find(i => i.id === id);
+function saveShop(){ try { localStorage.setItem('pomo-shop', JSON.stringify(shop)); localStorage.setItem('pomo-coins', coins); } catch(e) {} }
+
+function applyLook(){
+  const box = $('dog');
+  const bg = itemById(shop.worn.bg);
+  box.style.background = bg && bg.css ? bg.css : '';
+  const emo = box.querySelector('.emo');
+  if (!emo) return;
+  emo.querySelectorAll('.acc').forEach(n => n.remove());
+  ['hat','face','neck'].forEach(slot => {
+    const it = itemById(shop.worn[slot]);
+    if (!it) return;
+    const sp = document.createElement('span');
+    sp.className = 'acc acc-' + slot;
+    sp.textContent = it.emoji;
+    emo.appendChild(sp);
+  });
+}
+function buyItem(it){
+  if (shop.owned.includes(it.id) || coins < it.price) return;
+  coins -= it.price;
+  shop.owned.push(it.id);
+  shop.worn[it.slot] = it.id;
+  saveShop(); showWallet(); applyLook(); renderShop();
+}
+function toggleWear(it){
+  if (it.slot === 'bg') shop.worn.bg = it.id === 'bg0' || shop.worn.bg === it.id ? 'bg0' : it.id;
+  else shop.worn[it.slot] = shop.worn[it.slot] === it.id ? null : it.id;
+  saveShop(); applyLook(); renderShop();
+}
+function renderShop(){
+  $('shopCoins').textContent = coins.toLocaleString();
+  const list = $('shopList');
+  list.replaceChildren();
+  ITEMS.filter(i => (shopTab === 'bg') === (i.slot === 'bg')).forEach(it => {
+    const owned = shop.owned.includes(it.id), worn = shop.worn[it.slot] === it.id;
+    const card = document.createElement('div');
+    card.className = 'item' + (worn ? ' worn' : '');
+    const pv = document.createElement('div'); pv.className = 'pv'; pv.textContent = it.emoji;
+    if (it.css) pv.style.background = it.css;
+    const nm = document.createElement('div'); nm.className = 'nm2'; nm.textContent = it.name;
+    const sl = document.createElement('div'); sl.className = 'sl'; sl.textContent = SLOT_LABEL[it.slot];
+    const btn = document.createElement('button');
+    if (!owned) {
+      btn.textContent = '🪙 ' + it.price + ' 구매';
+      btn.dataset.price = it.price;
+      btn.disabled = coins < it.price;
+      btn.onclick = () => buyItem(it);
+    } else if (it.id === 'bg0') {
+      btn.textContent = worn ? '사용 중' : '장착';
+      btn.disabled = worn;
+      btn.onclick = () => toggleWear(it);
+    } else {
+      btn.textContent = worn ? '해제' : '장착';
+      btn.onclick = () => toggleWear(it);
+    }
+    card.append(pv, nm, sl, btn);
+    list.appendChild(card);
+  });
+}
+$('openShop').onclick = () => { renderShop(); $('shop').showModal(); };
+$('shopClose').onclick = () => $('shop').close();
+document.querySelectorAll('.shop-tabs button').forEach(b => b.onclick = () => {
+  shopTab = b.dataset.tab;
+  document.querySelectorAll('.shop-tabs button').forEach(x => x.classList.toggle('on', x === b));
+  renderShop();
+});
+function earn(){
+  focusSec++;
+  let got = focusSec % COIN_EVERY === 0;
+  if (got) coins++;
+  try { localStorage.setItem('pomo-coins', coins); localStorage.setItem(todayKey(), focusSec); } catch(e) {}
+  showWallet(got);
+}
+function startDogs(){ stopDogs(); showStage(); dogTimer = setInterval(() => { evoSec++; showStage(); if (mode === 'work') earn(); }, 1000); }
+function stopDogs(){ clearInterval(dogTimer); dogTimer = null; }
+function resetDogs(){ stopDogs(); evoSec = 0; lastStage = -1; showStage(); }
+function stop(){ clearInterval(timer); timer = null; stopDogs(); }
+function tick(){
+  left = Math.max(0, Math.round((endAt - Date.now())/1000));
+  if (left === 0) { finish(); return; }
+  render();
+}
+function finish(){
+  stop(); beep();
+  if (mode === 'work') {
+    done++;
+    try { localStorage.setItem('pomo-done-' + new Date().toDateString(), done); } catch(e) {}
+    setMode(done % 4 === 0 ? 'long' : 'short');
+    if ('Notification' in window && Notification.permission === 'granted') new Notification('집중 끝! 쉬어가세요 🍅');
+  } else {
+    setMode('work');
+    if ('Notification' in window && Notification.permission === 'granted') new Notification('휴식 끝! 다시 집중해요');
+  }
+}
+function setMode(m){
+  stop(); mode = m; total = left = MODES[m];
+  document.body.className = m === 'work' ? '' : m;
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
+  render();
+}
+$('start').onclick = () => {
+  if (timer) { stop(); render(); return; }
+  if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
+  endAt = Date.now() + left*1000;
+  timer = setInterval(tick, 250);
+  startDogs();
+  render();
+};
+$('reset').onclick = () => { stop(); left = total; resetDogs(); render(); };
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => setMode(b.dataset.mode));
+document.addEventListener('keydown', e => { if (e.code === 'Space' && e.target.tagName !== 'BUTTON' && !$('shop').open) { e.preventDefault(); $('start').click(); } });
+showStage();
+showWallet();
+render();
+</script>
+</body>
+</html>
