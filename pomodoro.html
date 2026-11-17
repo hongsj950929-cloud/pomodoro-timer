@@ -32,8 +32,28 @@
   .dog { margin-top:20px; height:200px; border-radius:16px; background:var(--track); overflow:hidden; display:grid; place-items:center; color:var(--muted); font-size:14px; }
   .wallet { margin-top:16px; padding:10px 12px; border-radius:12px; background:var(--track); font-size:14px; }
   .wallet.bump { animation:pop .3s ease-out; }
-  .pet { text-align:center; }
-  .emo { line-height:1.1; animation:pop .5s ease-out; }
+  .pet { text-align:center; padding-top:12px; }
+  .emo { position:relative; display:inline-block; line-height:1.1; animation:pop .5s ease-out; }
+  .acc { position:absolute; left:50%; transform:translateX(-50%); line-height:1; pointer-events:none; white-space:nowrap; }
+  .acc-hat { top:-.25em; font-size:.55em; }
+  .acc-face { top:.42em; font-size:.5em; }
+  .acc-neck { bottom:-.1em; font-size:.45em; }
+  .shopbtn { margin-top:10px; width:100%; border:0; border-radius:12px; padding:10px; font-size:15px; cursor:pointer; background:var(--accent); color:#fff; font-weight:700; }
+  dialog#shop { border:0; border-radius:20px; padding:20px; width:min(92vw, 420px); max-height:85vh; background:var(--card); color:var(--text); box-shadow:0 12px 40px rgba(0,0,0,.25); }
+  dialog#shop::backdrop { background:rgba(0,0,0,.45); }
+  .shop-head { display:flex; justify-content:space-between; align-items:center; font-size:17px; margin-bottom:12px; }
+  .shop-tabs { display:flex; gap:6px; background:var(--track); padding:4px; border-radius:999px; margin-bottom:12px; }
+  .shop-tabs button { flex:1; border:0; background:none; color:var(--muted); padding:8px 0; border-radius:999px; font-size:14px; cursor:pointer; }
+  .shop-tabs button.on { background:var(--card); color:var(--accent); font-weight:700; }
+  .shop-list { display:grid; grid-template-columns:repeat(2, 1fr); gap:10px; overflow-y:auto; max-height:46vh; padding:2px; }
+  .item { border:2px solid var(--track); border-radius:14px; padding:10px; text-align:center; }
+  .item.worn { border-color:var(--accent); }
+  .item .pv { height:64px; border-radius:10px; display:grid; place-items:center; font-size:36px; background:var(--track); margin-bottom:6px; }
+  .item .nm2 { font-size:14px; font-weight:700; }
+  .item .sl { font-size:12px; color:var(--muted); margin-bottom:6px; }
+  .item button { width:100%; border:0; border-radius:999px; padding:7px 0; font-size:13px; cursor:pointer; background:var(--accent); color:#fff; font-weight:700; }
+  .item button:disabled { background:var(--track); color:var(--muted); cursor:not-allowed; }
+  #shopClose { margin-top:14px; width:100%; border:0; border-radius:12px; padding:10px; font-size:15px; cursor:pointer; background:var(--track); color:var(--text); }
   .nm { font-weight:700; color:var(--text); font-size:16px; margin-top:4px; }
   .nx { font-size:13px; color:var(--muted); margin-top:2px; }
   @keyframes pop { 0% { transform:scale(.4); } 70% { transform:scale(1.15); } 100% { transform:scale(1); } }
@@ -60,8 +80,18 @@
   </div>
   <div class="dog" id="dog">🐶 시작하면 3초마다 강아지 사진이 바뀌어요</div>
   <div class="wallet">🪙 <b id="coins">0</b> 코인 · 오늘 집중 <b id="focus">0분 0초</b></div>
+  <button class="shopbtn" id="openShop">🛍️ 강아지 상점</button>
   <div class="count">완료한 포모도로: <b id="done">0</b>개</div>
 </main>
+<dialog id="shop" aria-label="강아지 상점">
+  <div class="shop-head"><b>🛍️ 강아지 상점</b><span>🪙 <b id="shopCoins">0</b></span></div>
+  <div class="shop-tabs">
+    <button data-tab="wear" class="on">옷·소품</button>
+    <button data-tab="bg">배경</button>
+  </div>
+  <div class="shop-list" id="shopList"></div>
+  <button id="shopClose">닫기</button>
+</dialog>
 <script>
 const MODES = { work:25*60, short:5*60, long:15*60 };
 const C = 2*Math.PI*108;
@@ -121,6 +151,7 @@ function showStage(){
     lastStage = s;
     box.innerHTML = '<div class="pet"><div class="emo" style="font-size:' + (64 + Math.min(s, 40)) + 'px">' + STAGES[s].emoji + '</div><div class="nm"></div><div class="nx"></div></div>';
   }
+  applyLook();
   box.querySelector('.nm').textContent = 'Lv.' + (s+1) + ' ' + STAGES[s].name;
   box.querySelector('.nx').textContent = s < last ? '진화 ' + (s+1) + ' / ' + STAGES.length : '최종 진화 완료! 🎉 (' + STAGES.length + ' / ' + STAGES.length + ')';
 }
@@ -133,7 +164,108 @@ function showWallet(bump){
   $('coins').textContent = coins.toLocaleString();
   $('focus').textContent = Math.floor(focusSec/60) + '분 ' + (focusSec%60) + '초';
   if (bump) { const w = document.querySelector('.wallet'); w.classList.remove('bump'); void w.offsetWidth; w.classList.add('bump'); }
+  if ($('shop').open) {
+    $('shopCoins').textContent = coins.toLocaleString();
+    document.querySelectorAll('#shopList button[data-price]').forEach(b => { b.disabled = coins < +b.dataset.price; });
+  }
 }
+
+// ===== 상점 =====
+const BG = (a, b) => 'linear-gradient(135deg,' + a + ',' + b + ')';
+const ITEMS = [
+  { id:'cap',     slot:'hat',  emoji:'🧢', name:'야구 모자', price:30 },
+  { id:'straw',   slot:'hat',  emoji:'👒', name:'밀짚모자', price:60 },
+  { id:'tophat',  slot:'hat',  emoji:'🎩', name:'실크햇', price:80 },
+  { id:'grad',    slot:'hat',  emoji:'🎓', name:'학사모', price:120 },
+  { id:'crown',   slot:'hat',  emoji:'👑', name:'왕관', price:200 },
+  { id:'glasses', slot:'face', emoji:'👓', name:'안경', price:40 },
+  { id:'shades',  slot:'face', emoji:'🕶️', name:'선글라스', price:50 },
+  { id:'ribbon',  slot:'neck', emoji:'🎀', name:'리본', price:30 },
+  { id:'scarf',   slot:'neck', emoji:'🧣', name:'목도리', price:40 },
+  { id:'medal',   slot:'neck', emoji:'🏅', name:'금메달', price:150 },
+  { id:'bg0',     slot:'bg',   emoji:'🐾', name:'기본 배경', price:0, css:'' },
+  { id:'bgsunset',slot:'bg',   emoji:'🌅', name:'노을', price:50,  css:BG('#ffb88c','#de6262') },
+  { id:'bgsea',   slot:'bg',   emoji:'🏖️', name:'바다', price:80,  css:BG('#89f7fe','#66a6ff') },
+  { id:'bgforest',slot:'bg',   emoji:'🌳', name:'숲', price:100, css:BG('#a8e063','#56ab2f') },
+  { id:'bgnight', slot:'bg',   emoji:'🌌', name:'밤하늘', price:120, css:BG('#232526','#414345') },
+  { id:'bgsakura',slot:'bg',   emoji:'🌸', name:'벚꽃', price:150, css:BG('#ffdde1','#ee9ca7') },
+  { id:'bggold',  slot:'bg',   emoji:'✨', name:'황금빛', price:300, css:BG('#f9d423','#ff4e50') }
+];
+const SLOT_LABEL = { hat:'모자', face:'얼굴', neck:'목', bg:'배경' };
+let shop = { owned:['bg0'], worn:{ hat:null, face:null, neck:null, bg:'bg0' } };
+try {
+  const s = JSON.parse(localStorage.getItem('pomo-shop'));
+  if (s && Array.isArray(s.owned) && s.worn) shop = { owned:['bg0', ...s.owned.filter(x => x !== 'bg0')], worn:{ hat:null, face:null, neck:null, bg:'bg0', ...s.worn } };
+} catch(e) {}
+let shopTab = 'wear';
+const itemById = id => ITEMS.find(i => i.id === id);
+function saveShop(){ try { localStorage.setItem('pomo-shop', JSON.stringify(shop)); localStorage.setItem('pomo-coins', coins); } catch(e) {} }
+
+function applyLook(){
+  const box = $('dog');
+  const bg = itemById(shop.worn.bg);
+  box.style.background = bg && bg.css ? bg.css : '';
+  const emo = box.querySelector('.emo');
+  if (!emo) return;
+  emo.querySelectorAll('.acc').forEach(n => n.remove());
+  ['hat','face','neck'].forEach(slot => {
+    const it = itemById(shop.worn[slot]);
+    if (!it) return;
+    const sp = document.createElement('span');
+    sp.className = 'acc acc-' + slot;
+    sp.textContent = it.emoji;
+    emo.appendChild(sp);
+  });
+}
+function buyItem(it){
+  if (shop.owned.includes(it.id) || coins < it.price) return;
+  coins -= it.price;
+  shop.owned.push(it.id);
+  shop.worn[it.slot] = it.id;
+  saveShop(); showWallet(); applyLook(); renderShop();
+}
+function toggleWear(it){
+  if (it.slot === 'bg') shop.worn.bg = it.id === 'bg0' || shop.worn.bg === it.id ? 'bg0' : it.id;
+  else shop.worn[it.slot] = shop.worn[it.slot] === it.id ? null : it.id;
+  saveShop(); applyLook(); renderShop();
+}
+function renderShop(){
+  $('shopCoins').textContent = coins.toLocaleString();
+  const list = $('shopList');
+  list.replaceChildren();
+  ITEMS.filter(i => (shopTab === 'bg') === (i.slot === 'bg')).forEach(it => {
+    const owned = shop.owned.includes(it.id), worn = shop.worn[it.slot] === it.id;
+    const card = document.createElement('div');
+    card.className = 'item' + (worn ? ' worn' : '');
+    const pv = document.createElement('div'); pv.className = 'pv'; pv.textContent = it.emoji;
+    if (it.css) pv.style.background = it.css;
+    const nm = document.createElement('div'); nm.className = 'nm2'; nm.textContent = it.name;
+    const sl = document.createElement('div'); sl.className = 'sl'; sl.textContent = SLOT_LABEL[it.slot];
+    const btn = document.createElement('button');
+    if (!owned) {
+      btn.textContent = '🪙 ' + it.price + ' 구매';
+      btn.dataset.price = it.price;
+      btn.disabled = coins < it.price;
+      btn.onclick = () => buyItem(it);
+    } else if (it.id === 'bg0') {
+      btn.textContent = worn ? '사용 중' : '장착';
+      btn.disabled = worn;
+      btn.onclick = () => toggleWear(it);
+    } else {
+      btn.textContent = worn ? '해제' : '장착';
+      btn.onclick = () => toggleWear(it);
+    }
+    card.append(pv, nm, sl, btn);
+    list.appendChild(card);
+  });
+}
+$('openShop').onclick = () => { renderShop(); $('shop').showModal(); };
+$('shopClose').onclick = () => $('shop').close();
+document.querySelectorAll('.shop-tabs button').forEach(b => b.onclick = () => {
+  shopTab = b.dataset.tab;
+  document.querySelectorAll('.shop-tabs button').forEach(x => x.classList.toggle('on', x === b));
+  renderShop();
+});
 function earn(){
   focusSec++;
   let got = focusSec % COIN_EVERY === 0;
@@ -178,7 +310,7 @@ $('start').onclick = () => {
 };
 $('reset').onclick = () => { stop(); left = total; resetDogs(); render(); };
 document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => setMode(b.dataset.mode));
-document.addEventListener('keydown', e => { if (e.code === 'Space' && e.target.tagName !== 'BUTTON') { e.preventDefault(); $('start').click(); } });
+document.addEventListener('keydown', e => { if (e.code === 'Space' && e.target.tagName !== 'BUTTON' && !$('shop').open) { e.preventDefault(); $('start').click(); } });
 showStage();
 showWallet();
 render();
