@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>포모도로 타이머</title>
+<style>
+  :root { --bg:#fff5f3; --card:#fff; --text:#2b2220; --muted:#8a7a76; --accent:#e5533d; --track:#f3dedb; }
+  body.short { --bg:#effaf3; --accent:#2f9e5b; --track:#d6eede; }
+  body.long  { --bg:#eef4fd; --accent:#3b79d6; --track:#d8e4f6; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#241917; --card:#2f2220; --text:#f5e9e6; --muted:#a8958f; --track:#4a3430; }
+    body.short { --bg:#14231a; --track:#27402f; }
+    body.long  { --bg:#141c2b; --track:#27364f; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; display:grid; place-items:center; background:var(--bg); color:var(--text);
+         font-family:system-ui,"Malgun Gothic",sans-serif; transition:background .4s; padding:16px; }
+  .card { background:var(--card); border-radius:24px; padding:28px 24px; width:100%; max-width:380px; text-align:center;
+          box-shadow:0 8px 30px rgba(0,0,0,.08); }
+  .tabs { display:flex; gap:6px; background:var(--track); padding:4px; border-radius:999px; margin-bottom:24px; }
+  .tabs button { flex:1; border:0; background:none; color:var(--muted); padding:8px 0; border-radius:999px; font-size:14px; cursor:pointer; }
+  .tabs button.on { background:var(--card); color:var(--accent); font-weight:700; }
+  .ring { position:relative; width:240px; height:240px; margin:0 auto 24px; }
+  svg { transform:rotate(-90deg); }
+  .time { position:absolute; inset:0; display:grid; place-items:center; font-size:54px; font-weight:700; font-variant-numeric:tabular-nums; }
+  .controls { display:flex; gap:10px; justify-content:center; }
+  .controls button { border:0; border-radius:999px; padding:12px 28px; font-size:16px; cursor:pointer; }
+  #start { background:var(--accent); color:#fff; font-weight:700; min-width:120px; }
+  #reset { background:var(--track); color:var(--text); }
+  .count { margin-top:20px; color:var(--muted); font-size:14px; }
+  .dog { margin-top:20px; height:200px; border-radius:16px; background:var(--track); overflow:hidden; display:grid; place-items:center; color:var(--muted); font-size:14px; }
+  .wallet { margin-top:16px; padding:10px 12px; border-radius:12px; background:var(--track); font-size:14px; }
+  .wallet.bump { animation:pop .3s ease-out; }
+  .pet { text-align:center; }
+  .emo { line-height:1.1; animation:pop .5s ease-out; }
+  .nm { font-weight:700; color:var(--text); font-size:16px; margin-top:4px; }
+  .nx { font-size:13px; color:var(--muted); margin-top:2px; }
+  @keyframes pop { 0% { transform:scale(.4); } 70% { transform:scale(1.15); } 100% { transform:scale(1); } }
+  button:focus-visible { outline:3px solid var(--accent); outline-offset:2px; }
+</style>
+</head>
+<body>
+<main class="card">
+  <div class="tabs" role="tablist">
+    <button data-mode="work" class="on">집중 25분</button>
+    <button data-mode="short">휴식 5분</button>
+    <button data-mode="long">긴 휴식 15분</button>
+  </div>
+  <div class="ring">
+    <svg width="240" height="240" viewBox="0 0 240 240">
+      <circle cx="120" cy="120" r="108" fill="none" stroke="var(--track)" stroke-width="12"/>
+      <circle id="prog" cx="120" cy="120" r="108" fill="none" stroke="var(--accent)" stroke-width="12" stroke-linecap="round"/>
+    </svg>
+    <div class="time" id="time">25:00</div>
+  </div>
+  <div class="controls">
+    <button id="start">시작</button>
+    <button id="reset">리셋</button>
+  </div>
+  <div class="dog" id="dog">🐶 시작하면 3초마다 강아지 사진이 바뀌어요</div>
+  <div class="wallet">🪙 <b id="coins">0</b> 코인 · 오늘 집중 <b id="focus">0분 0초</b></div>
+  <div class="count">완료한 포모도로: <b id="done">0</b>개</div>
+</main>
+<script>
+const MODES = { work:25*60, short:5*60, long:15*60 };
+const C = 2*Math.PI*108;
+const $ = id => document.getElementById(id);
+let mode = 'work', total = MODES.work, left = total, timer = null, endAt = 0, done = 0;
+try { done = +localStorage.getItem('pomo-done-' + new Date().toDateString()) || 0; } catch(e) {}
+$('prog').style.strokeDasharray = C;
+
+function fmt(s){ return String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0'); }
+function render(){
+  $('time').textContent = fmt(left);
+  $('prog').style.strokeDashoffset = C * (1 - left/total);
+  $('start').textContent = timer ? '일시정지' : (left < total ? '계속' : '시작');
+  $('done').textContent = done;
+  document.title = (timer ? fmt(left) + ' · ' : '') + '포모도로 타이머';
+}
+function beep(){
+  try {
+    const a = new (window.AudioContext||window.webkitAudioContext)();
+    [0,.3,.6].forEach(t => {
+      const o = a.createOscillator(), g = a.createGain();
+      o.frequency.value = 880; o.connect(g); g.connect(a.destination);
+      g.gain.setValueAtTime(.2, a.currentTime+t); g.gain.exponentialRampToValueAtTime(.001, a.currentTime+t+.25);
+      o.start(a.currentTime+t); o.stop(a.currentTime+t+.25);
+    });
+  } catch(e) {}
+}
+const STAGES = [
+  ['🥚','알'],['🐣','부화 중인 알'],['🐶','새끼 강아지'],['🐶🍼','젖먹이 강아지'],['🐕','강아지'],
+  ['🦴','뼈다귀 발견!'],['🎾','공놀이 강아지'],['🐕‍🦺','옷 입은 강아지'],['🐶🧣','목도리 강아지'],['🐶🧢','모자 쓴 강아지'],
+  ['😎','선글라스 강아지'],['👟','운동화 강아지'],['🎒','등교하는 강아지'],['✏️','공부하는 강아지'],['📚','우등생 강아지'],
+  ['🎓','졸업한 강아지'],['👔','신입사원 강아지'],['💼','직장인 강아지'],['☕','커피 수혈 강아지'],['💻','개발자 강아지'],
+  ['🐶🍅','포모도로 마스터'],['🍳','요리사 강아지'],['🎨','화가 강아지'],['🎸','기타리스트 강아지'],['🎤','가수 강아지'],
+  ['🎬','영화배우 강아지'],['🏆','월드스타 강아지'],['⚽','축구선수 강아지'],['🏀','농구선수 강아지'],['🏊','수영선수 강아지'],
+  ['🥇','금메달리스트'],['🚓','경찰견'],['🚒','소방견'],['🚑','구조견'],['🕵️','탐정견'],
+  ['🦸','슈퍼히어로 견'],['🥷','닌자 견'],['🧙','마법사 견'],['🧚','요정 견'],['🧞','지니 견'],
+  ['🤖','로봇 견'],['👽','외계 견'],['🚀','우주비행사 견'],['🌙','달 탐사 견'],['🪐','토성 여행 견'],
+  ['☄️','혜성 라이더'],['🌟','별이 된 견'],['☀️','태양 견'],['🌈','무지개 견'],['❄️','얼음 견'],
+  ['🔥','불꽃 견'],['⚡','번개 견'],['🌊','파도 견'],['🌪️','태풍 견'],['🌋','화산 견'],
+  ['🌳','숲의 수호견'],['🍀','행운의 견'],['🦄','유니콘 견'],['🐲','아기 용'],['🐉','용'],
+  ['🦅','독수리 날개 견'],['🦁','사자 갈기 견'],['🐯','호랑이 줄무늬 견'],['🐺','늑대 견'],['🦊','구미호 견'],
+  ['🐻','곰의 힘 견'],['🦖','공룡 견'],['🦕','목긴 공룡 견'],['🐙','문어발 견'],['🦈','상어 견'],
+  ['🐋','고래 견'],['🔱','바다의 왕'],['⚔️','기사 견'],['🛡️','방패 견'],['🏰','성주 견'],
+  ['🤴','왕자 견'],['👑','왕 견'],['🧿','신비의 견'],['🔮','예언가 견'],['⚜️','황금 견'],
+  ['💎','다이아몬드 견'],['🪽','천사 견'],['😇','대천사 견'],['😈','대마왕 견'],['👹','도깨비 견'],
+  ['🌀','차원 이동 견'],['⏳','시간 지배 견'],['♾️','무한의 견'],['🌌','은하 견'],['🕳️','블랙홀 견'],
+  ['💥','빅뱅 견'],['🪄','창조의 견'],['🌍','지구 수호 견'],['☯️','음양 견'],['🧘','득도한 견'],
+  ['🏔️','신선 견'],['✨','전설 속 견'],['🐾','발자국의 신'],['🌠','우주의 지배자'],['👑🐕','우주 견왕']
+].map(([emoji, name]) => ({ emoji, name }));
+const EVO_SEC = 1;
+let dogTimer = null, evoSec = 0, lastStage = -1;
+function showStage(){
+  const last = STAGES.length - 1;
+  const s = Math.min(last, Math.floor(evoSec / EVO_SEC));
+  const box = $('dog');
+  if (s !== lastStage) {
+    lastStage = s;
+    box.innerHTML = '<div class="pet"><div class="emo" style="font-size:' + (64 + Math.min(s, 40)) + 'px">' + STAGES[s].emoji + '</div><div class="nm"></div><div class="nx"></div></div>';
+  }
+  box.querySelector('.nm').textContent = 'Lv.' + (s+1) + ' ' + STAGES[s].name;
+  box.querySelector('.nx').textContent = s < last ? '진화 ' + (s+1) + ' / ' + STAGES.length : '최종 진화 완료! 🎉 (' + STAGES.length + ' / ' + STAGES.length + ')';
+}
+// 코인: 집중 모드로 타이머가 돌아가는 동안 6초에 1코인 (= 1분에 10코인)
+const COIN_EVERY = 6;
+const todayKey = () => 'pomo-focus-' + new Date().toDateString();
+let coins = 0, focusSec = 0;
+try { coins = +localStorage.getItem('pomo-coins') || 0; focusSec = +localStorage.getItem(todayKey()) || 0; } catch(e) {}
+function showWallet(bump){
+  $('coins').textContent = coins.toLocaleString();
+  $('focus').textContent = Math.floor(focusSec/60) + '분 ' + (focusSec%60) + '초';
+  if (bump) { const w = document.querySelector('.wallet'); w.classList.remove('bump'); void w.offsetWidth; w.classList.add('bump'); }
+}
+function earn(){
+  focusSec++;
+  let got = focusSec % COIN_EVERY === 0;
+  if (got) coins++;
+  try { localStorage.setItem('pomo-coins', coins); localStorage.setItem(todayKey(), focusSec); } catch(e) {}
+  showWallet(got);
+}
+function startDogs(){ stopDogs(); showStage(); dogTimer = setInterval(() => { evoSec++; showStage(); if (mode === 'work') earn(); }, 1000); }
+function stopDogs(){ clearInterval(dogTimer); dogTimer = null; }
+function resetDogs(){ stopDogs(); evoSec = 0; lastStage = -1; showStage(); }
+function stop(){ clearInterval(timer); timer = null; stopDogs(); }
+function tick(){
+  left = Math.max(0, Math.round((endAt - Date.now())/1000));
+  if (left === 0) { finish(); return; }
+  render();
+}
+function finish(){
+  stop(); beep();
+  if (mode === 'work') {
+    done++;
+    try { localStorage.setItem('pomo-done-' + new Date().toDateString(), done); } catch(e) {}
+    setMode(done % 4 === 0 ? 'long' : 'short');
+    if ('Notification' in window && Notification.permission === 'granted') new Notification('집중 끝! 쉬어가세요 🍅');
+  } else {
+    setMode('work');
+    if ('Notification' in window && Notification.permission === 'granted') new Notification('휴식 끝! 다시 집중해요');
+  }
+}
+function setMode(m){
+  stop(); mode = m; total = left = MODES[m];
+  document.body.className = m === 'work' ? '' : m;
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
+  render();
+}
+$('start').onclick = () => {
+  if (timer) { stop(); render(); return; }
+  if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
+  endAt = Date.now() + left*1000;
+  timer = setInterval(tick, 250);
+  startDogs();
+  render();
+};
+$('reset').onclick = () => { stop(); left = total; resetDogs(); render(); };
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => setMode(b.dataset.mode));
+document.addEventListener('keydown', e => { if (e.code === 'Space' && e.target.tagName !== 'BUTTON') { e.preventDefault(); $('start').click(); } });
+showStage();
+showWallet();
+render();
+</script>
+</body>
+</html>
